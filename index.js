@@ -68,7 +68,7 @@ const instrument = (page, opts) => {
   page.toulon = toulon
   toulon.start.then(() => console.log('start'))
   toulon.finish.then(() => console.log('finish'))
-  console.log('instrumented')
+  page.finished = toulon.finish
   return Promise.all(promises)
 }
 
@@ -85,7 +85,7 @@ const run = async opts => {
   })
   const args = [
     '--no-sandbox',
-    '--enable-experimental-productivity',
+    '--enable-experimental-web-platform-features',
     '--ignore-certificate-errors'
   ]
   const browser = await puppeteer.launch({args})
@@ -94,9 +94,7 @@ const run = async opts => {
   await open
   const url = `https://${opts.host}:${opts.port}`
   page.goto(url)//, {waitUntil: 'networkidle0'})
-  console.log('asdf')
   await page.toulon.finish
-  console.log('done')
 
   await browser.close()
   await close(server)
