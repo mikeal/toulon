@@ -1,4 +1,3 @@
-import puppeteer from 'puppeteer'
 import https from 'https'
 import { readFileSync } from 'fs'
 
@@ -72,7 +71,8 @@ const instrument = (page, opts) => {
   return Promise.all(promises)
 }
 
-const run = async opts => {
+const run = async (puppeteer, opts) => {
+  if (!puppeteer) throw new Error('Missing require argument "puppeteer")
   const index = createIndex(opts)
   opts = { port: 8881, host: '127.0.0.1', index, ...opts }
   const handler = createHandler(opts)
@@ -100,4 +100,3 @@ const run = async opts => {
   await close(server)
 }
 
-run({files: [ 'test.js' ]}).catch(e => console.error(e))
