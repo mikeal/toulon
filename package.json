@@ -11,6 +11,6 @@
   "author": "Mikeal Rogers <mikeal.rogers@gmail.com> (https://www.mikealrogers.com/)",
   "license": "(Apache-2.0 AND MIT)",
   "devDependencies": {
-    "puppeteer": "^5.0.0"
+    "standard": "^14.3.4"
   }
 }

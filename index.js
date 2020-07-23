@@ -10,10 +10,12 @@ const createServer = handler => https.createServer(opts, handler)
 
 const createHandler = opts => {
   const handler = async (req, res) => {
-    console.log(req.method, req.url)
-    if (req.url === '/') {
+    if (opts.debug) console.log(req.method, req.url)
+    if (req.url.startsWith('/_toulon/')) {
       res.setHeader('content-type', 'text/html')
-      res.end(await opts.index)
+      res.end(opts.tabs[req.url.slice('/_toulon/'.length)])
+    } else {
+      opts.handler(opts, req, res)
     }
   }
   return handler
@@ -41,7 +43,7 @@ const createIndex = async opts => {
   return str
 }
 
-const close = server => new Promise((resolve, reject) => {
+const closeServer = server => new Promise((resolve, reject) => {
   server.close(e => {
     if (e) return reject(e)
     resolve()
@@ -49,32 +51,25 @@ const close = server => new Promise((resolve, reject) => {
 })
 
 const instrument = (page, opts) => {
-  const toulon = {}
   const promises = []
-  toulon.start = new Promise(resolve => {
-    promises.push(page.exposeFunction('_toulonStart', resolve))
-  })
-  toulon.finish = new Promise((resolve, reject) => {
-    promises.push(page.exposeFunction('_toulonFinish', resolve))
-    promises.push(page.on('error', error => {
-      reject(error)
-    }))
-    promises.push(page.on('pageerror', error => {
-      reject(error)
-    }))
-  })
-  promises.push(page.on('console', msg => console.log({msg})))
-  page.toulon = toulon
-  toulon.start.then(() => console.log('start'))
-  toulon.finish.then(() => console.log('finish'))
-  page.finished = toulon.finish
+  promises.push(page.on('error', error => {
+    if (opts.onError) opts.onError(error)
+  }))
+  promises.push(page.on('pageerror', error => {
+    if (opts.onError) opts.onError(error)
+  }))
+  promises.push(page.on('console', msg => {
+    if (opts.onConsole) return opts.onConsole(msg)
+    console.log({ msg })
+  }))
   return Promise.all(promises)
 }
 
 const run = async (puppeteer, opts) => {
-  if (!puppeteer) throw new Error('Missing require argument "puppeteer")
+  if (!puppeteer) throw new Error('Missing require argument "puppeteer"')
   const index = createIndex(opts)
   opts = { port: 8881, host: '127.0.0.1', index, ...opts }
+  opts.tabs = {}
   const handler = createHandler(opts)
   const server = createServer(handler)
   const open = new Promise((resolve, reject) => {
@@ -88,15 +83,24 @@ const run = async (puppeteer, opts) => {
     '--enable-experimental-web-platform-features',
     '--ignore-certificate-errors'
   ]
-  const browser = await puppeteer.launch({args})
-  const page = await browser.newPage()
-  await instrument(page)
-  await open
-  const url = `https://${opts.host}:${opts.port}`
-  page.goto(url)//, {waitUntil: 'networkidle0'})
-  await page.toulon.finish
+  const browser = await puppeteer.launch({ args })
+  const tab = async html => {
+    const page = await browser.newPage()
+    await instrument(page)
+    await open
+    const id = Math.random()
+    opts.tabs[id.toString()] = html
+    const url = `https://${opts.host}:${opts.port}/_toulon/${id}`
+    page.goto(url)//, {waitUntil: 'networkidle0'})
+    return page
+  }
 
-  await browser.close()
-  await close(server)
+  const close = async () => {
+    await browser.close()
+    await closeServer(server)
+  }
+
+  return { tab, close }
 }
 
+export default run
