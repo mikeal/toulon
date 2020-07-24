@@ -1,12 +1,12 @@
 import https from 'https'
 import { readFileSync } from 'fs'
 
-const opts = {
-  key: readFileSync('./certs/server.key'),
-  cert: readFileSync('./certs/server.cert')
-}
+const opts = () => ({
+  key: readFileSync(new URL('./certs/server.key', import.meta.url)),
+  cert: readFileSync(new URL('./certs/server.cert', import.meta.url))
+})
 
-const createServer = handler => https.createServer(opts, handler)
+const createServer = handler => https.createServer(opts(), handler)
 
 const createHandler = opts => {
   const handler = async (req, res) => {
@@ -21,28 +21,6 @@ const createHandler = opts => {
   return handler
 }
 
-const createIndex = async opts => {
-  let str = '<html><body>'
-  str += `
-    <script>
-      _toulonStart()
-    </script>
-    <script type="importmap">
-    {
-      "imports": {
-        "test": "/fs/test.js"
-      }
-    }
-    </script>
-    <script type="module">
-      import test from 'test'
-      console.log('test')
-    </script>
-  `
-  str += '</body></html>'
-  return str
-}
-
 const closeServer = server => new Promise((resolve, reject) => {
   server.close(e => {
     if (e) return reject(e)
@@ -50,25 +28,17 @@ const closeServer = server => new Promise((resolve, reject) => {
   })
 })
 
-const instrument = (page, opts) => {
+const instrument = (page, onError, onConsole) => {
   const promises = []
-  promises.push(page.on('error', error => {
-    if (opts.onError) opts.onError(error)
-  }))
-  promises.push(page.on('pageerror', error => {
-    if (opts.onError) opts.onError(error)
-  }))
-  promises.push(page.on('console', msg => {
-    if (opts.onConsole) return opts.onConsole(msg)
-    console.log({ msg })
-  }))
+  promises.push(page.on('error', error => onError(error)))
+  promises.push(page.on('pageerror', error => onError(error)))
+  promises.push(page.on('console', msg => onConsole(msg)))
   return Promise.all(promises)
 }
 
 const run = async (puppeteer, opts) => {
   if (!puppeteer) throw new Error('Missing require argument "puppeteer"')
-  const index = createIndex(opts)
-  opts = { port: 8881, host: '127.0.0.1', index, ...opts }
+  opts = { port: 8881, host: '127.0.0.1', ...opts }
   opts.tabs = {}
   const handler = createHandler(opts)
   const server = createServer(handler)
@@ -84,9 +54,25 @@ const run = async (puppeteer, opts) => {
     '--ignore-certificate-errors'
   ]
   const browser = await puppeteer.launch({ args })
-  const tab = async html => {
+  const tab = async (html, onError, onConsole, globals={}) => {
+    globals = {...globals}
     const page = await browser.newPage()
-    await instrument(page)
+    await instrument(page, onError, onConsole)
+    const fns = {}
+    for (const [key, value] of Object.entries(globals)) {
+      if (typeof value === 'function') {
+        fns[key] = value
+        delete globals[key]
+      }
+    }
+    for (const [key, value] of Object.entries(fns)) {
+      page.exposeFunction(key, (...args) => value(...args))
+    }
+    await page.evaluateOnNewDocument((data) => {
+      for (const [key, value] of Object.entries(data)) {
+        window[key] = value
+      }
+    }, globals)
     await open
     const id = Math.random()
     opts.tabs[id.toString()] = html
