@@ -54,8 +54,8 @@ const run = async (puppeteer, opts) => {
     '--ignore-certificate-errors'
   ]
   const browser = await puppeteer.launch({ args })
-  const tab = async (html, onError, onConsole, globals={}) => {
-    globals = {...globals}
+  const tab = async (html, onError, onConsole, globals = {}) => {
+    globals = { ...globals }
     const page = await browser.newPage()
     await instrument(page, onError, onConsole)
     const fns = {}
